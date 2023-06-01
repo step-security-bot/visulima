@@ -1,8 +1,39 @@
-import type { Handler as CreateHandler } from "./handler/create";
-import type { Handler as DeleteHandler } from "./handler/delete";
-import type { Handler as ListHandler } from "./handler/list";
-import type { Handler as GetHandler } from "./handler/read";
-import type { Handler as UpdateHandler } from "./handler/update";
+import type { GetRouteType } from "./utils/get-route-type";
+
+export type CreateHandler = <T, Q, Request>(
+    parameters: HandlerParameters<T, Q> & { request: Request & { body: Record<string, any> } },
+) => Promise<{
+    data: any;
+    status: number;
+}>;
+
+export type DeleteHandler = <T, Q>(
+    parameters: UniqueResourceHandlerParameters<T, Q>,
+) => Promise<{
+    data: any;
+    status: number;
+}>;
+
+export type ListHandler = <T, Q extends ParsedQueryParameters>(
+    parameters: HandlerParameters<T, Q> & { pagination: PaginationConfig },
+) => Promise<{
+    data: any;
+    status: number;
+}>;
+
+export type GetHandler = <T, Q>(
+    parameters: UniqueResourceHandlerParameters<T, Q>,
+) => Promise<{
+    data: any;
+    status: number;
+}>;
+
+export type UpdateHandler = <T, Q, Request>(
+    parameters: UniqueResourceHandlerParameters<T, Q> & { request: Request & { body: Partial<T> } },
+) => Promise<{
+    data: any;
+    status: number;
+}>;
 
 export enum RouteType {
     CREATE = "CREATE",
@@ -23,7 +54,10 @@ export type ModelsOptions<M extends string = string> = {
     [key in M]?: ModelOption;
 };
 
-export type HandlerOptions<M extends string = string> = {
+export type MarshalFunction<Data = any, ReturnValue = any> = (data: Data) => ReturnValue;
+export type UnmarshalFunction<Data = any, ReturnValue = any> = (data: Data) => ReturnValue;
+
+export type HandlerOptions<M extends string, Request, Response> = {
     formatResourceId?: (resourceId: string) => number | string;
     models?: ModelsOptions<M>;
     exposeStrategy?: "all" | "none";
@@ -34,6 +68,15 @@ export type HandlerOptions<M extends string = string> = {
         get?: GetHandler;
         list?: ListHandler;
         update?: UpdateHandler;
+    };
+    serialization?: {
+        marshal: MarshalFunction;
+        unmarshal: UnmarshalFunction;
+    };
+    callbacks?: {
+        onError?: <T>(request: Request, response: Response, error: Error & T) => Promise<void> | void;
+        onRequest?: (request: Request, response: Response, options?: GetRouteType & { resourceName: string }) => Promise<void> | void;
+        onSuccess?: (payload: { status: number; data: any }) => Promise<void> | void;
     };
 };
 
@@ -57,7 +100,14 @@ export interface UniqueResourceHandlerParameters<T, Q> {
 export interface Adapter<T, Q, M extends string = string> {
     models?: M[];
     init?: () => Promise<void>;
-    parseQuery: (resourceName: M, query: ParsedQueryParameters) => Q;
+    parseQuery: (
+        resourceName: M,
+        query: ParsedQueryParameters,
+        serialization: {
+            marshal: MarshalFunction;
+            unmarshal: UnmarshalFunction;
+        },
+    ) => Q;
     getAll: (resourceName: M, query: Q) => Promise<T[]>;
     getOne: (resourceName: M, resourceId: number | string, query: Q) => Promise<T>;
     create: (resourceName: M, data: any, query: Q) => Promise<T>;
@@ -78,7 +128,7 @@ export type PaginationData = {
 };
 
 export type RecursiveField = {
-    [key: string]: TRecursiveField | boolean;
+    [key: string]: RecursiveField | boolean;
 };
 
 export type WhereOperator = "$cont" | "$ends" | "$eq" | "$gt" | "$gte" | "$in" | "$isnull" | "$lt" | "$lte" | "$neq" | "$notin" | "$starts";
@@ -86,23 +136,23 @@ export type WhereOperator = "$cont" | "$ends" | "$eq" | "$gt" | "$gte" | "$in" |
 export type SearchCondition = Date | boolean | number | string | null;
 
 export type WhereCondition = {
-    [key in TWhereOperator]?: TSearchCondition;
+    [key in WhereOperator]?: SearchCondition;
 };
 
 export type Condition = {
-    [key: string]: TCondition | TSearchCondition | TWhereCondition;
+    [key: string]: Condition | SearchCondition | WhereCondition;
 };
 
 export type WhereField = Condition & {
-    $and?: TCondition | TCondition[];
-    $or?: TCondition | TCondition[];
-    $not?: TCondition | TCondition[];
+    $and?: Condition | Condition[];
+    $or?: Condition | Condition[];
+    $not?: Condition | Condition[];
 };
 
 export type OrderByOperator = "$asc" | "$desc";
 
 export type OrderByField = {
-    [key: string]: TOrderByOperator;
+    [key: string]: OrderByOperator;
 };
 
 export interface ParsedQueryParameters {

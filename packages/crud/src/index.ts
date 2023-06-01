@@ -1,5 +1,3 @@
-export { default as PrismaAdapter } from "./adapter/prisma";
-
 export { RouteType } from "./types.d";
 export type {
     ParsedQueryParameters,
@@ -21,7 +19,4 @@ export type {
     PaginationData,
 } from "./types.d";
 
-export type { SwaggerModelsConfig } from "./swagger/types.d";
-
-export type { ModelsToOpenApiParameters } from "./swagger/adapter/prisma";
-export { default as modelsToOpenApi } from "./swagger/adapter/prisma";
+export { default as abstractHandler } from "./base-crud-handler";

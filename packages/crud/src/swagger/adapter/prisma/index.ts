@@ -2,7 +2,7 @@ import type { OpenAPIV3 } from "openapi-types";
 
 import modelsToRouteNames from "../../../adapter/prisma/utils/models-to-route-names";
 import type { FakePrismaClient, ModelsOptions } from "../../../types.d";
-import PrismaJsonSchemaParser from "../../json-schema-parser";
+import PrismaJsonSchemaParser from "./json-schema-parser";
 import type { SwaggerModelsConfig } from "../../types.d";
 import getModelsAccessibleRoutes from "../../utils/get-models-accessible-routes";
 import getSwaggerPaths from "../../utils/get-swagger-paths";
@@ -38,18 +38,22 @@ const overwritePathsExampleWithModel = (swaggerPaths: OpenAPIV3.PathsObject, exa
     return swaggerPaths;
 };
 
-const modelsToOpenApi = async <M extends string = string, PrismaClient = FakePrismaClient>({
-    prismaClient,
-    models: ctorModels,
-    swagger = { models: {}, allowedMediaTypes: { "application/json": true } },
-    crud = { models: {} },
-    defaultExposeStrategy = "all",
-}: ModelsToOpenApiParameters<M, PrismaClient>): Promise<{
-    schemas: {
-        [key: string]: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject;
-    };
-    examples: {
-        [key: string]: OpenAPIV3.ExampleObject | OpenAPIV3.ReferenceObject;
+const modelsToOpenApi = async <M extends string = string, PrismaClient = FakePrismaClient>(
+    prismaClient: PrismaClient & FakePrismaClient,
+    {
+        models: ctorModels,
+        swagger = { models: {}, allowedMediaTypes: { "application/json": true } },
+        crud = { models: {} },
+        exposeStrategy = "all",
+    }: ModelsToOpenApiParameters<M>,
+): Promise<{
+    components: {
+        schemas: {
+            [key: string]: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject;
+        };
+        examples: {
+            [key: string]: OpenAPIV3.ExampleObject | OpenAPIV3.ReferenceObject;
+        };
     };
     tags: OpenAPIV3.TagObject[];
     paths: OpenAPIV3.PathsObject;
@@ -94,8 +98,7 @@ const modelsToOpenApi = async <M extends string = string, PrismaClient = FakePri
     }
 
     const models = ctorModels ?? (Object.keys(prismaDmmfModels) as M[]);
-
-    const swaggerRoutes = getModelsAccessibleRoutes(models, crud.models, defaultExposeStrategy);
+    const swaggerRoutes = getModelsAccessibleRoutes(models, crud.models, exposeStrategy);
     const swaggerTags = getSwaggerTags(models, swagger.models);
     const swaggerPaths = getSwaggerPaths({
         routes: swaggerRoutes,
@@ -103,20 +106,19 @@ const modelsToOpenApi = async <M extends string = string, PrismaClient = FakePri
         models: crud.models,
         routesMap: modelsToRouteNames(prismaDmmfModels, models),
     });
+
     const schemas = JSON.parse(schema.replaceAll("#/definitions", "#/components/schemas"));
     const examples = parser.getExampleModelsSchemas(dModels, schemas);
 
     return {
-        schemas,
-        examples,
+        components: { schemas, examples },
         tags: swaggerTags,
         paths: overwritePathsExampleWithModel(swaggerPaths, examples as { [key: string]: OpenAPIV3.ExampleObject }),
     };
 };
 
-export interface ModelsToOpenApiParameters<M extends string, PrismaClient> {
-    prismaClient: FakePrismaClient & PrismaClient;
-    defaultExposeStrategy?: "all" | "none";
+export interface ModelsToOpenApiParameters<M extends string> {
+    exposeStrategy?: "all" | "none";
     models?: M[];
     swagger?: Partial<{
         models: SwaggerModelsConfig<M>;

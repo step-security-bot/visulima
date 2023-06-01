@@ -5,13 +5,13 @@ const yargs = require("yargs/yargs");
 // eslint-disable-next-line unicorn/prefer-module
 const { hideBin } = require("yargs/helpers");
 // eslint-disable-next-line unicorn/prefer-module
-const fs = require("node:fs");
-// eslint-disable-next-line unicorn/prefer-module
 const fse = require("fs-extra");
 // eslint-disable-next-line unicorn/prefer-module
 const path = require("node:path");
 // eslint-disable-next-line unicorn/prefer-module
 const process = require("node:process");
+// eslint-disable-next-line unicorn/prefer-module
+const { rimrafSync } = require("rimraf");
 
 // eslint-disable-next-line no-undef, unicorn/prefer-module
 const packagesPath = path.join(__dirname, "..", "pages", "docs");
@@ -56,6 +56,8 @@ async function command() {
     // eslint-disable-next-line no-console
     console.log("");
 
+    const dirWasDeleted = {};
+
     // eslint-disable-next-line no-restricted-syntax
     for await (const result of walk(searchPath, {
         maxDepth: 20,
@@ -69,11 +71,18 @@ async function command() {
             // eslint-disable-next-line no-console
             console.log("Found", result.path);
 
-            const destination = `${packagesPath}${result.path.replace(searchPath, "").replace("docs/", "")}`;
+            const relativeResultPath = result.path.replace(searchPath, "").replace("docs/", "");
 
             if (copy) {
-                fs.rmSync(destination, { force: true });
-                fse.copySync(result.path, destination);
+                const packageName = relativeResultPath.split("/")[1];
+
+                if (!dirWasDeleted[packageName]) {
+                    rimrafSync(`${packagesPath}/${packageName}`);
+
+                    dirWasDeleted[packageName] = true;
+                }
+
+                fse.copySync(result.path, `${packagesPath}${relativeResultPath}`);
             } else if (symlink) {
                 // eslint-disable-next-line no-console
                 console.log("TODO: add symlink logic");

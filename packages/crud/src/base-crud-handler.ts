@@ -10,6 +10,7 @@ import listHandler from "./handler/list";
 import readHandler from "./handler/read";
 import updateHandler from "./handler/update";
 import parseQuery from "./query-parser";
+import { unmarshal } from "./serialization/json";
 import type {
     Adapter, ExecuteHandler, HandlerOptions, HandlerParameters, ParsedQueryParameters,
 } from "./types.d";
@@ -26,14 +27,14 @@ async function baseHandler<R extends Request, Context, T, Q extends ParsedQueryP
     responseExecutor: (responseOrContext: Context, responseConfig: ResponseConfig) => Promise<Response>,
     finalExecutor: (responseOrContext: Context) => Promise<void>,
     adapter: Adapter<T, Q>,
-    options?: HandlerOptions<M>,
+    options?: HandlerOptions<M, R, Context>,
 ): Promise<ExecuteHandler<R, Context>>;
 
 async function baseHandler<R extends IncomingMessage, RResponse extends ServerResponse, T, Q extends ParsedQueryParameters = any, M extends string = string>(
     responseExecutor: (responseOrContext: RResponse, responseConfig: ResponseConfig) => Promise<void>,
     finalExecutor: (responseOrContext: RResponse) => Promise<void>,
     adapter: Adapter<T, Q>,
-    options?: HandlerOptions<M>,
+    options?: HandlerOptions<M, R, RResponse>,
 ): Promise<ExecuteHandler<R, RResponse>>;
 
 // eslint-disable-next-line sonarjs/cognitive-complexity,max-len
@@ -41,7 +42,7 @@ async function baseHandler<R extends { url: string; method: string }, RResponse,
     responseExecutor: (responseOrContext: RResponse, responseConfig: ResponseConfig) => Promise<RResponse>,
     finalExecutor: (responseOrContext: RResponse) => Promise<void>,
     adapter: Adapter<T, Q>,
-    options?: HandlerOptions<M>,
+    options?: HandlerOptions<M, R, RResponse>,
 ): Promise<ExecuteHandler<R, RResponse>> {
     try {
         validateAdapterMethods(adapter);
@@ -58,8 +59,20 @@ async function baseHandler<R extends { url: string; method: string }, RResponse,
         pagination: {
             perPage: 20,
         },
+        serialization: {
+            marshal: (value: any) => value,
+            unmarshal,
+        },
         ...options,
     };
+
+    if (typeof config.serialization.marshal !== "function") {
+        throw new TypeError("Marshal function is required");
+    }
+
+    if (typeof config.serialization.unmarshal !== "function") {
+        throw new TypeError("Unmarshal function is required");
+    }
 
     const routeNames = await adapter.mapModelsToRouteNames?.();
     const modelRoutes: { [key in M]?: string } = {};
@@ -71,33 +84,39 @@ async function baseHandler<R extends { url: string; method: string }, RResponse,
     return async (request, responseOrContext) => {
         const { resourceName, modelName } = getResourceNameFromUrl(request.url, modelRoutes as { [key in M]: string });
 
-        if (!resourceName) {
-            if (process.env.NODE_ENV === "development") {
-                const mappedModels = await adapter.mapModelsToRouteNames?.();
+        try {
+            if (!resourceName) {
+                if (process.env["NODE_ENV"] === "development") {
+                    const mappedModels = await adapter.mapModelsToRouteNames?.();
 
-                if (typeof mappedModels === "object") {
-                    throw createHttpError(404, `Resource not found, possible models: ${Object.values(mappedModels).join(", ")}`);
+                    if (typeof mappedModels === "object") {
+                        throw createHttpError(404, `Resource not found, possible models: ${Object.values(mappedModels).join(", ")}`);
+                    }
                 }
+
+                throw createHttpError(404, `Resource not found: ${request.url}`);
             }
 
-            throw createHttpError(404, `Resource not found: ${request.url}`);
-        }
+            const { routeType, resourceId } = getRouteType(request.method, request.url, resourceName);
 
-        const { routeType, resourceId } = getRouteType(request.method, request.url, resourceName);
+            await config.callbacks?.onRequest?.(request, responseOrContext, {
+                routeType,
+                resourceId,
+                resourceName,
+            });
 
-        if (routeType === null) {
-            throw createHttpError(404, `Route not found: ${request.url}`);
-        }
+            if (routeType === null) {
+                throw createHttpError(404, `Route not found: ${request.url}`);
+            }
 
-        const modelConfig = options?.models?.[modelName as M];
+            const modelConfig = options?.models?.[modelName as M];
 
-        const accessibleRoutes = getAccessibleRoutes(modelConfig?.only, modelConfig?.exclude, options?.exposeStrategy ?? "all");
+            const accessibleRoutes = getAccessibleRoutes(modelConfig?.only, modelConfig?.exclude, options?.exposeStrategy ?? "all");
 
-        if (!accessibleRoutes.includes(routeType)) {
-            throw createHttpError(404, `Route not found: ${request.url}`);
-        }
+            if (!accessibleRoutes.includes(routeType)) {
+                throw createHttpError(404, `Route not found: ${request.url}`);
+            }
 
-        try {
             const resourceIdFormatted = modelConfig?.formatResourceId?.(resourceId as string) ?? config.formatResourceId(resourceId as string);
 
             await adapter.connect?.();
@@ -105,71 +124,96 @@ async function baseHandler<R extends { url: string; method: string }, RResponse,
             const parsedQuery = parseQuery(request.url);
             const parameters: HandlerParameters<T, Q> = {
                 adapter,
-                query: adapter.parseQuery(modelName as M, parsedQuery),
+                query: adapter.parseQuery(modelName as M, parsedQuery, config.serialization),
                 resourceName: modelName,
             };
 
-            try {
-                let responseConfig: ResponseConfig;
+            const executeCrud = async (): Promise<ResponseConfig> => {
+                try {
+                    let responseConfig: ResponseConfig = {
+                        status: 404,
+                        data: "Method not found",
+                    };
 
-                switch (routeType) {
-                    case RouteType.READ_ONE: {
-                        responseConfig = await (config.handlers?.get ?? readHandler)<T, Q>({
-                            ...parameters,
-                            resourceId: resourceIdFormatted,
-                        });
-                        break;
-                    }
-                    case RouteType.READ_ALL: {
-                        responseConfig = await (config.handlers?.list ?? listHandler)<T, Q>({
-                            ...parameters,
-                            query: {
-                                ...parameters.query,
-                                page: parsedQuery.page ? Number(parsedQuery.page) : undefined,
-                                limit: parsedQuery.limit ? Number(parsedQuery.limit) : undefined,
-                            },
-                            pagination: config.pagination,
-                        });
-                        break;
-                    }
-                    case RouteType.CREATE: {
-                        responseConfig = await (config.handlers?.create ?? createHandler)<T, Q, R>({
-                            ...parameters,
-                            request: request as R & { body: Record<string, any> },
-                        });
-                        break;
-                    }
-                    case RouteType.UPDATE: {
-                        responseConfig = await (config.handlers?.update ?? updateHandler)<T, Q, R>({
-                            ...parameters,
-                            resourceId: resourceIdFormatted,
-                            request: request as R & { body: Partial<T> },
-                        });
-                        break;
-                    }
-                    case RouteType.DELETE: {
-                        responseConfig = await (config.handlers?.delete ?? deleteHandler)<T, Q>({
-                            ...parameters,
-                            resourceId: resourceIdFormatted,
-                        });
-                        break;
-                    }
-                    default: {
-                        responseConfig = {
-                            status: 404,
-                            data: "Method not found",
-                        };
-                    }
-                }
+                    // eslint-disable-next-line default-case
+                    switch (routeType) {
+                        case RouteType.READ_ONE: {
+                            responseConfig = await (config.handlers?.get ?? readHandler)<T, Q>({
+                                ...parameters,
+                                resourceId: resourceIdFormatted,
+                            });
 
-                await responseExecutor(responseOrContext, responseConfig);
-            } catch (error: any) {
-                if (adapter.handleError && !(error instanceof ApiError)) {
-                    adapter.handleError(error);
-                } else {
+                            break;
+                        }
+                        case RouteType.READ_ALL: {
+                            responseConfig = await (config.handlers?.list ?? listHandler)<T, Q>({
+                                ...parameters,
+                                query: {
+                                    ...parameters.query,
+                                    page: parsedQuery.page ? Number(parsedQuery.page) : undefined,
+                                    limit: parsedQuery.limit ? Number(parsedQuery.limit) : undefined,
+                                },
+                                pagination: config.pagination,
+                            });
+
+                            break;
+                        }
+                        case RouteType.CREATE: {
+                            const typedRequest = request as R & { body: Record<string, any> };
+
+                            typedRequest.body = config.serialization.unmarshal(typedRequest.body) as Record<string, any>;
+
+                            responseConfig = await (config.handlers?.create ?? createHandler)<T, Q, R>({
+                                ...parameters,
+                                request: typedRequest,
+                            });
+
+                            break;
+                        }
+                        case RouteType.UPDATE: {
+                            const typedRequest = request as R & { body: Partial<T> };
+
+                            typedRequest.body = config.serialization.unmarshal(typedRequest.body) as Partial<T>;
+
+                            responseConfig = await (config.handlers?.update ?? updateHandler)<T, Q, R>({
+                                ...parameters,
+                                resourceId: resourceIdFormatted,
+                                request: typedRequest,
+                            });
+
+                            break;
+                        }
+                        case RouteType.DELETE: {
+                            responseConfig = await (config.handlers?.delete ?? deleteHandler)<T, Q>({
+                                ...parameters,
+                                resourceId: resourceIdFormatted,
+                            });
+
+                            break;
+                        }
+                    }
+
+                    responseConfig.data = config.serialization.marshal(responseConfig.data);
+
+                    return responseConfig;
+                } catch (error: any) {
+                    if (adapter.handleError && !(error instanceof ApiError)) {
+                        adapter.handleError(error);
+                    }
+
                     throw error;
                 }
-            }
+            };
+
+            const responseConfig = await executeCrud();
+
+            await responseExecutor(responseOrContext, responseConfig);
+
+            await config.callbacks?.onSuccess?.(responseConfig);
+        } catch (error: any) {
+            await config.callbacks?.onError?.(request, responseOrContext, error);
+
+            throw error;
         } finally {
             await adapter.disconnect?.();
 

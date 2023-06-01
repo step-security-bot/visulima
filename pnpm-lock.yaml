@@ -263,6 +263,9 @@ importers:
       postcss-cli:
         specifier: ^10.1.0
         version: 10.1.0(postcss@8.4.24)(ts-node@10.9.1)
+      rimraf:
+        specifier: ^5.0.1
+        version: 5.0.1
       tailwindcss:
         specifier: ^3.3.2
         version: 3.3.2(ts-node@10.9.1)
@@ -1025,11 +1028,11 @@ importers:
 
   packages/api-platform/cli/commander: {}
 
-  packages/api-platform/next: {}
+  packages/api-platform/framework/next: {}
 
-  packages/api-platform/next/pages/redoc: {}
+  packages/api-platform/framework/next/pages/redoc: {}
 
-  packages/api-platform/next/pages/swagger: {}
+  packages/api-platform/framework/next/pages/swagger: {}
 
   packages/connect:
     dependencies:
@@ -1166,9 +1169,6 @@ importers:
       '@visulima/pagination':
         specifier: 2.0.3
         version: link:../pagination
-      '@visulima/prisma-dmmf-transformer':
-        specifier: 1.0.6
-        version: link:../prisma-dmmf-transformer
       http-errors:
         specifier: ^2.0.0
         version: 2.0.0
@@ -1187,7 +1187,7 @@ importers:
         version: 2.2.1(semantic-release@21.0.2)
       '@prisma/client':
         specifier: ^4.14.1
-        version: 4.14.1(prisma@4.14.1)
+        version: 4.14.1(prisma@4.15.0)
       '@rushstack/eslint-plugin-security':
         specifier: ^0.6.0
         version: 0.6.0(eslint@8.41.0)(typescript@5.0.4)
@@ -1215,6 +1215,12 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^5.59.7
         version: 5.59.7(eslint@8.41.0)(typescript@5.0.4)
+      '@visulima/nextra-theme-docs':
+        specifier: workspace:*
+        version: link:../nextra-theme-docs
+      '@visulima/prisma-dmmf-transformer':
+        specifier: 1.0.6
+        version: link:../prisma-dmmf-transformer
       '@vitest/coverage-c8':
         specifier: ^0.31.1
         version: 0.31.1(vitest@0.31.1)
@@ -1318,7 +1324,22 @@ importers:
         specifier: ^0.31.1
         version: 0.31.1(jsdom@22.0.0)
 
-  packages/crud/next: {}
+  packages/crud/__tests__/integration/adapter/prisma:
+    dependencies:
+      '@prisma/client':
+        specifier: 4.14.1
+        version: 4.14.1(prisma@4.15.0)
+      prisma:
+        specifier: ^4.15.0
+        version: 4.15.0
+
+  packages/crud/adapter/prisma: {}
+
+  packages/crud/framework/next: {}
+
+  packages/crud/swagger: {}
+
+  packages/crud/swagger/prisma: {}
 
   packages/health-check:
     dependencies:
@@ -4604,6 +4625,19 @@ packages:
       '@prisma/engines-version': 4.14.0-67.d9a4c5988f480fa576d43970d5a23641aa77bc9c
       prisma: 4.14.1
 
+  /@prisma/client@4.14.1(prisma@4.15.0):
+    resolution: {integrity: sha512-TZIswkeX1ccsHG/eN2kICzg/csXll0osK3EHu1QKd8VJ3XLcXozbNELKkCNfsCUvKJAwPdDtFCzF+O+raIVldw==}
+    engines: {node: '>=14.17'}
+    requiresBuild: true
+    peerDependencies:
+      prisma: '*'
+    peerDependenciesMeta:
+      prisma:
+        optional: true
+    dependencies:
+      '@prisma/engines-version': 4.14.0-67.d9a4c5988f480fa576d43970d5a23641aa77bc9c
+      prisma: 4.15.0
+
   /@prisma/debug@4.14.1:
     resolution: {integrity: sha512-jZjNZimL7FVlSyL78r/w9pSqu2s1y+5JGyi0Ajvq17cBCdDzMONGM76PDKBWjOusRhbZD4xcTQ5kfr9JqM0I2A==}
     dependencies:
@@ -4619,6 +4653,10 @@ packages:
 
   /@prisma/engines@4.14.1:
     resolution: {integrity: sha512-APqFddPVHYmWNKqc+5J5SqrLFfOghKOLZxobmguDUacxOwdEutLsbXPVhNnpFDmuQWQFbXmrTTPoRrrF6B1MWA==}
+    requiresBuild: true
+
+  /@prisma/engines@4.15.0:
+    resolution: {integrity: sha512-FTaOCGs0LL0OW68juZlGxFtYviZa4xdQj/rQEdat2txw0s3Vu/saAPKjNVXfIgUsGXmQ72HPgNr6935/P8FNAA==}
     requiresBuild: true
 
   /@prisma/fetch-engine@4.14.1:
@@ -16257,6 +16295,14 @@ packages:
     requiresBuild: true
     dependencies:
       '@prisma/engines': 4.14.1
+
+  /prisma@4.15.0:
+    resolution: {integrity: sha512-iKZZpobPl48gTcSZVawLMQ3lEy6BnXwtoMj7hluoGFYu2kQ6F9LBuBrUyF95zRVnNo8/3KzLXJXJ5TEnLSJFiA==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+    requiresBuild: true
+    dependencies:
+      '@prisma/engines': 4.15.0
 
   /prismjs@1.27.0:
     resolution: {integrity: sha512-t13BGPUlFDR7wRB5kQDG4jjl7XeuH6jbJGt11JHPL96qwsEHNX2+68tFXqc1/k+/jALsbSWJKUOT/hcYAZ5LkA==}

@@ -7,7 +7,7 @@ import type { HttpError } from "http-errors";
 import createHttpError from "http-errors";
 
 import type {
-    Adapter, FakePrismaClient, PaginationData, ParsedQueryParameters,
+    Adapter, FakePrismaClient, MarshalFunction, PaginationData, ParsedQueryParameters, UnmarshalFunction,
 } from "../../types.d";
 import type { PrismaParsedQueryParameters } from "./types.d";
 import modelsToRouteNames from "./utils/models-to-route-names";
@@ -68,7 +68,7 @@ export default class PrismaAdapter<T, M extends string, PrismaClient> implements
             return this.dmmf.mappingsMap;
         }
 
-        throw new Error("Couldn't get prisma client models");
+        throw new Error("Prisma types are not generated. Please enter `npx prisma generate` to create new types.");
     };
 
     public async init(): Promise<void> {
@@ -115,39 +115,48 @@ export default class PrismaAdapter<T, M extends string, PrismaClient> implements
             : createHttpError(500, "an unknown error occured, check your server logs for more info");
     }
 
-    public parseQuery(resourceName: M, query: ParsedQueryParameters): PrismaParsedQueryParameters {
+    public parseQuery(
+        resourceName: M,
+        query: ParsedQueryParameters,
+        {
+            unmarshal,
+        }: {
+            marshal: MarshalFunction;
+            unmarshal: UnmarshalFunction;
+        },
+    ): PrismaParsedQueryParameters {
         const parsed: PrismaParsedQueryParameters = {};
 
         if (query.select) {
-            parsed.select = parsePrismaRecursiveField(query.select, "select");
+            parsed.select = parsePrismaRecursiveField(unmarshal(query.select), "select");
         }
 
         if (query.include) {
-            parsed.include = parsePrismaRecursiveField(query.include, "include");
+            parsed.include = parsePrismaRecursiveField(unmarshal(query.include), "include");
         }
 
         if (query.originalQuery?.["where"]) {
-            parsed.where = parsePrismaWhere(JSON.parse(query.originalQuery["where"]), this.manyRelations[resourceName] ?? []);
+            parsed.where = parsePrismaWhere(unmarshal(query.originalQuery["where"]), this.manyRelations[resourceName] ?? []);
         }
 
         if (query.orderBy) {
-            parsed.orderBy = parsePrismaOrderBy(query.orderBy);
+            parsed.orderBy = parsePrismaOrderBy(unmarshal(query.orderBy));
         }
 
         if (query.limit !== undefined) {
-            parsed.take = query.limit;
+            parsed.take = unmarshal(query.limit);
         }
 
         if (query.skip !== undefined) {
-            parsed.skip = query.skip;
+            parsed.skip = unmarshal(query.skip);
         }
 
         if (query.originalQuery?.["cursor"]) {
-            parsed.cursor = parsePrismaCursor(JSON.parse(query.originalQuery["cursor"]));
+            parsed.cursor = parsePrismaCursor(unmarshal(query.originalQuery["cursor"]));
         }
 
         if (query.distinct) {
-            parsed.distinct = query.distinct;
+            parsed.distinct = unmarshal(query.distinct);
         }
 
         return parsed;
