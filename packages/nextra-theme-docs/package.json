@@ -90,7 +90,7 @@
         "tailwind-merge": "^1.13.0"
     },
     "devDependencies": {
-        "@mdx-js/react": "^2.0.0",
+        "@mdx-js/react": "^2.3.0",
         "@anolilab/eslint-config": "^5.0.5",
         "@anolilab/semantic-release-preset": "^2.2.1",
         "@rushstack/eslint-plugin-security": "^0.6.0",
